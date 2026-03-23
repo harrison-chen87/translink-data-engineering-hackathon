@@ -1,0 +1,29 @@
+bundle:
+  name: translink_data_eng_hackathon
+
+variables:
+  catalog:
+    description: Unity Catalog catalog name
+    default: ""
+  schema:
+    description: Schema name
+    default: traffic_hackathon_de
+  volume:
+    description: Volume name for data files
+    default: traffic_data
+  warehouse_id:
+    description: SQL warehouse ID (for metric views job)
+    default: ""
+
+workspace:
+  root_path: ~/.bundle/${bundle.name}
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production

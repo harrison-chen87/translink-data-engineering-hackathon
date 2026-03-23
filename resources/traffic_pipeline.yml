@@ -1,0 +1,39 @@
+resources:
+  pipelines:
+    traffic_pipeline:
+      name: "TransLink Traffic Pipeline"
+      catalog: "${var.catalog}"
+      target: "${var.schema}"
+      development: true
+      channel: PREVIEW
+      serverless: true
+      configuration:
+        catalog: "${var.catalog}"
+        schema: "${var.schema}"
+        volume: "${var.volume}"
+      libraries:
+        # Bronze layer
+        - notebook:
+            path: ../src/pipeline/bronze_traffic_api.sql
+        - notebook:
+            path: ../src/pipeline/bronze_eap_fact_traffic.sql
+        - notebook:
+            path: ../src/pipeline/bronze_eap_dim_corridors.sql
+        - notebook:
+            path: ../src/pipeline/bronze_eap_dim_sensors.sql
+        # Silver layer
+        - notebook:
+            path: ../src/pipeline/silver_traffic_readings.sql
+        - notebook:
+            path: ../src/pipeline/silver_fact_traffic_counts.sql
+        - notebook:
+            path: ../src/pipeline/silver_dim_corridors.sql
+        - notebook:
+            path: ../src/pipeline/silver_dim_sensors.sql
+        # Gold layer
+        - notebook:
+            path: ../src/pipeline/gold_corridor_daily_summary.sql
+        - notebook:
+            path: ../src/pipeline/gold_congestion_patterns.sql
+        - notebook:
+            path: ../src/pipeline/gold_sensor_reliability.py

@@ -1,0 +1,54 @@
+resources:
+  jobs:
+    traffic_workflow:
+      name: "TransLink Traffic Pipeline Workflow"
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+      tasks:
+        # Task 1: Poll the Google Routes API and write JSON to Volume
+        - task_key: poll_routes_api
+          notebook_task:
+            notebook_path: ../src/notebooks/poll_routes_api.py
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+              volume: "${var.volume}"
+          environment_key: default
+
+        # Task 2: Run the SDP pipeline (bronze → silver → gold)
+        - task_key: run_pipeline
+          depends_on:
+            - task_key: poll_routes_api
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.traffic_pipeline.id}
+            full_refresh: false
+
+        # Task 3: Apply constraints, tags, and comments
+        - task_key: apply_constraints
+          depends_on:
+            - task_key: run_pipeline
+          notebook_task:
+            notebook_path: ../src/pipeline/constraints_and_tags.sql
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+          environment_key: default
+
+        # Task 4: Deploy metric views
+        - task_key: deploy_metric_views
+          depends_on:
+            - task_key: run_pipeline
+          notebook_task:
+            notebook_path: ../src/metric_views/deploy_metric_views.py
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+          environment_key: default
+
+      # Schedule: every 15 minutes during business hours (for demo)
+      # Uncomment to enable scheduled polling:
+      # schedule:
+      #   quartz_cron_expression: "0 0/15 6-22 ? * MON-FRI"
+      #   timezone_id: America/Vancouver

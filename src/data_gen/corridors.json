@@ -1,0 +1,152 @@
+[
+  {
+    "corridor_id": "corridor_01",
+    "corridor_name": "Broadway & Commercial to VCC-Clark",
+    "corridor_type": "arterial",
+    "zone": "vancouver_east",
+    "speed_limit_kmh": 50,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2575, "lng": -123.0680},
+    "destination": {"lat": 49.2660, "lng": -123.0789}
+  },
+  {
+    "corridor_id": "corridor_02",
+    "corridor_name": "Broadway (Commercial to Arbutus)",
+    "corridor_type": "arterial",
+    "zone": "vancouver_west",
+    "speed_limit_kmh": 50,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2575, "lng": -123.0680},
+    "destination": {"lat": 49.2641, "lng": -123.1557}
+  },
+  {
+    "corridor_id": "corridor_03",
+    "corridor_name": "Knight Street Bridge (Vancouver to Richmond)",
+    "corridor_type": "bridge",
+    "zone": "richmond",
+    "speed_limit_kmh": 60,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2180, "lng": -123.0775},
+    "destination": {"lat": 49.1900, "lng": -123.0775}
+  },
+  {
+    "corridor_id": "corridor_04",
+    "corridor_name": "Lions Gate Bridge (Downtown to North Van)",
+    "corridor_type": "bridge",
+    "zone": "north_shore",
+    "speed_limit_kmh": 60,
+    "num_lanes": 3,
+    "origin": {"lat": 49.2985, "lng": -123.1371},
+    "destination": {"lat": 49.3199, "lng": -123.1363}
+  },
+  {
+    "corridor_id": "corridor_05",
+    "corridor_name": "Ironworkers Memorial (Burnaby to North Van)",
+    "corridor_type": "bridge",
+    "zone": "north_shore",
+    "speed_limit_kmh": 80,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2880, "lng": -123.0264},
+    "destination": {"lat": 49.3072, "lng": -123.0264}
+  },
+  {
+    "corridor_id": "corridor_06",
+    "corridor_name": "Granville Street Bridge (Downtown to Fairview)",
+    "corridor_type": "bridge",
+    "zone": "vancouver_west",
+    "speed_limit_kmh": 50,
+    "num_lanes": 8,
+    "origin": {"lat": 49.2790, "lng": -123.1330},
+    "destination": {"lat": 49.2660, "lng": -123.1330}
+  },
+  {
+    "corridor_id": "corridor_07",
+    "corridor_name": "Oak Street Bridge (Vancouver to Richmond)",
+    "corridor_type": "bridge",
+    "zone": "richmond",
+    "speed_limit_kmh": 70,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2100, "lng": -123.1261},
+    "destination": {"lat": 49.1900, "lng": -123.1261}
+  },
+  {
+    "corridor_id": "corridor_08",
+    "corridor_name": "Alex Fraser Bridge (Richmond to Surrey)",
+    "corridor_type": "bridge",
+    "zone": "surrey",
+    "speed_limit_kmh": 80,
+    "num_lanes": 4,
+    "origin": {"lat": 49.1700, "lng": -122.9429},
+    "destination": {"lat": 49.1500, "lng": -122.9429}
+  },
+  {
+    "corridor_id": "corridor_09",
+    "corridor_name": "Kingsway (Vancouver to Burnaby)",
+    "corridor_type": "arterial",
+    "zone": "burnaby",
+    "speed_limit_kmh": 50,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2620, "lng": -123.1010},
+    "destination": {"lat": 49.2270, "lng": -123.0040}
+  },
+  {
+    "corridor_id": "corridor_10",
+    "corridor_name": "Hastings St (Downtown to Burnaby)",
+    "corridor_type": "arterial",
+    "zone": "burnaby",
+    "speed_limit_kmh": 50,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2827, "lng": -123.1100},
+    "destination": {"lat": 49.2827, "lng": -123.0200}
+  },
+  {
+    "corridor_id": "corridor_11",
+    "corridor_name": "Marine Drive East (Knight to Boundary)",
+    "corridor_type": "arterial",
+    "zone": "vancouver_east",
+    "speed_limit_kmh": 50,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2090, "lng": -123.0775},
+    "destination": {"lat": 49.2090, "lng": -123.0230}
+  },
+  {
+    "corridor_id": "corridor_12",
+    "corridor_name": "Hwy 1 (Burnaby to Coquitlam)",
+    "corridor_type": "highway",
+    "zone": "coquitlam",
+    "speed_limit_kmh": 90,
+    "num_lanes": 6,
+    "origin": {"lat": 49.2650, "lng": -123.0100},
+    "destination": {"lat": 49.2770, "lng": -122.8700}
+  },
+  {
+    "corridor_id": "corridor_13",
+    "corridor_name": "49th Ave (Fraser to Knight)",
+    "corridor_type": "arterial",
+    "zone": "vancouver_east",
+    "speed_limit_kmh": 50,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2255, "lng": -123.0917},
+    "destination": {"lat": 49.2255, "lng": -123.0775}
+  },
+  {
+    "corridor_id": "corridor_14",
+    "corridor_name": "Cambie Bridge (Downtown to Cambie Village)",
+    "corridor_type": "bridge",
+    "zone": "vancouver_west",
+    "speed_limit_kmh": 50,
+    "num_lanes": 6,
+    "origin": {"lat": 49.2775, "lng": -123.1149},
+    "destination": {"lat": 49.2665, "lng": -123.1149}
+  },
+  {
+    "corridor_id": "corridor_15",
+    "corridor_name": "Pattullo Bridge (New West to Surrey)",
+    "corridor_type": "bridge",
+    "zone": "surrey",
+    "speed_limit_kmh": 60,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2110, "lng": -122.8912},
+    "destination": {"lat": 49.2020, "lng": -122.8912}
+  }
+]
