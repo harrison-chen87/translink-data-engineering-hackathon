@@ -4,7 +4,6 @@ bundle:
 variables:
   catalog:
     description: Unity Catalog catalog name
-    default: ""
   schema:
     description: Schema name
     default: traffic_hackathon_de
@@ -13,7 +12,6 @@ variables:
     default: traffic_data
   warehouse_id:
     description: SQL warehouse ID (for metric views job)
-    default: ""
 
 workspace:
   root_path: ~/.bundle/${bundle.name}

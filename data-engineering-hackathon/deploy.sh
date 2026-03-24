@@ -105,7 +105,7 @@ else
   RESULT=$($CLI api post /api/2.0/sql/statements --json "{
     \"warehouse_id\": \"${WAREHOUSE_ID}\",
     \"statement\": \"CREATE SCHEMA IF NOT EXISTS ${CATALOG}.${SCHEMA}\",
-    \"wait_timeout\": \"120s\"
+    \"wait_timeout\": \"30s\"
   }" 2>&1) || true
   STATE=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',{}).get('state','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
   [[ "$STATE" == "SUCCEEDED" ]] && echo "  Schema: ${CATALOG}.${SCHEMA} ✓" || echo "  WARNING: Schema creation: $STATE"
@@ -114,7 +114,7 @@ else
   RESULT=$($CLI api post /api/2.0/sql/statements --json "{
     \"warehouse_id\": \"${WAREHOUSE_ID}\",
     \"statement\": \"CREATE VOLUME IF NOT EXISTS ${CATALOG}.${SCHEMA}.${VOLUME}\",
-    \"wait_timeout\": \"120s\"
+    \"wait_timeout\": \"30s\"
   }" 2>&1) || true
   STATE=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',{}).get('state','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
   [[ "$STATE" == "SUCCEEDED" ]] && echo "  Volume: ${VOLUME_PATH} ✓" || echo "  WARNING: Volume creation: $STATE"
@@ -154,7 +154,8 @@ databricks bundle deploy \
   $TARGET_FLAG \
   --var="catalog=${CATALOG}" \
   --var="schema=${SCHEMA}" \
-  --var="volume=${VOLUME}"
+  --var="volume=${VOLUME}" \
+  --var="warehouse_id=${WAREHOUSE_ID}"
 
 echo "  Bundle deployed ✓"
 
@@ -172,7 +173,9 @@ if [[ "$SKIP_PIPELINE" == "false" ]]; then
     $TARGET_FLAG \
     --var="catalog=${CATALOG}" \
     --var="schema=${SCHEMA}" \
-    --var="volume=${VOLUME}"
+    --var="volume=${VOLUME}" \
+    --var="warehouse_id=${WAREHOUSE_ID}" \
+    --no-wait
 
   echo "  Workflow complete ✓"
 else

@@ -21,7 +21,7 @@ FROM STREAM read_files(
   '/Volumes/${catalog}/${schema}/${volume}/traffic_api/',
   format => 'json',
   header => true,
-  schemaHints => '
+  schema => '
     corridor_id STRING,
     corridor_name STRING,
     origin_lat DOUBLE,

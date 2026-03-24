@@ -5,7 +5,7 @@ resources:
       environments:
         - environment_key: default
           spec:
-            client: "2"
+            client: "1"
       tasks:
         # Task 1: Download GTFS data directly into the volume
         - task_key: acquire_gtfs_data
