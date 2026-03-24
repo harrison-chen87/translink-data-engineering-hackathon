@@ -1,0 +1,3 @@
+# GTFS data files — uploaded to Databricks Volumes, not tracked in git
+data/gtfs/*.zip
+.deploy-staging/

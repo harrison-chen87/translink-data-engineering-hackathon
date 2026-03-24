@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TransLink Transit Congestion Map</title>
+    <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        #map { width: 100vw; height: 100vh; }
+
+        .controls {
+            position: absolute; top: 16px; left: 16px;
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.15); z-index: 10;
+            min-width: 300px; max-height: calc(100vh - 32px); overflow-y: auto;
+        }
+        .controls h1 { font-size: 16px; margin-bottom: 12px; color: #1a1a1a; }
+        .controls h2 { font-size: 13px; font-weight: 600; color: #333; margin: 12px 0 8px; padding-top: 12px; border-top: 1px solid #eee; }
+        .controls label { font-size: 13px; color: #666; display: block; margin-bottom: 4px; }
+
+        /* Mode switch */
+        .mode-switch {
+            display: flex; border-radius: 10px; overflow: hidden;
+            border: 2px solid #0066cc; margin-bottom: 14px;
+        }
+        .mode-btn {
+            flex: 1; padding: 10px 8px; border: none; cursor: pointer;
+            font-size: 13px; font-weight: 600; text-align: center;
+            transition: all 0.3s; background: white; color: #0066cc;
+        }
+        .mode-btn.active { background: #0066cc; color: white; }
+        .mode-btn.active.live-mode { background: #ff1744; }
+        .mode-switch.live-active { border-color: #ff1744; }
+        .live-dot {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            background: #ff1744; margin-right: 6px; animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse-dot { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.3); } }
+
+        /* Layer toggles */
+        .toggle-group { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+        .toggle-btn {
+            flex: 1; padding: 7px 4px; border: 1px solid #ddd; border-radius: 8px;
+            background: #f5f5f5; cursor: pointer; font-size: 11px; text-align: center;
+            transition: all 0.2s; min-width: 55px;
+        }
+        .toggle-btn.active { background: #0066cc; color: white; border-color: #0066cc; }
+
+        /* Time controls */
+        .time-display { font-size: 24px; font-weight: 700; color: #1a1a1a; text-align: center; margin-bottom: 12px; }
+        .time-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .time-controls input[type="range"] { flex: 1; margin: 0; accent-color: #0066cc; }
+        .play-btn {
+            width: 32px; height: 32px; border: none; border-radius: 50%;
+            background: #0066cc; color: white; font-size: 14px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .play-btn:hover { background: #0055aa; }
+        .play-btn.playing { background: #ff1744; }
+        .day-selector { display: flex; gap: 4px; margin-bottom: 16px; }
+        .day-btn {
+            flex: 1; padding: 6px 2px; border: 1px solid #ddd; border-radius: 6px;
+            background: #f5f5f5; cursor: pointer; font-size: 11px; text-align: center; transition: all 0.2s;
+        }
+        .day-btn.active { background: #0066cc; color: white; border-color: #0066cc; }
+        .day-btn:hover { background: #e0e0e0; }
+        .day-btn.active:hover { background: #0055aa; }
+
+        /* Live mode time display */
+        .live-time-display {
+            text-align: center; padding: 10px; background: #fff3f3; border-radius: 8px;
+            margin-bottom: 12px; font-size: 13px; color: #c62828;
+        }
+        .live-time-display .clock { font-size: 22px; font-weight: 700; }
+
+        /* Legend */
+        .legend { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+        .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 12px; }
+        .legend-color { width: 24px; height: 4px; border-radius: 2px; }
+
+        /* Stats bar */
+        .stats {
+            position: absolute; bottom: 16px; left: 16px; background: white;
+            border-radius: 8px; padding: 12px 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            z-index: 10; font-size: 12px; color: #666;
+        }
+
+        /* Trip planner */
+        .trip-planner { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+        .trip-input { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .trip-input .marker { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+        .trip-input .marker.origin { background: #0066cc; }
+        .trip-input .marker.dest { background: #ff1744; }
+        .trip-input span { font-size: 12px; color: #333; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .trip-input span.placeholder { color: #999; font-style: italic; }
+        .trip-btn {
+            display: block; width: 100%; padding: 10px; border: 2px dashed #0066cc;
+            border-radius: 8px; background: #f0f7ff; color: #0066cc; font-size: 12px;
+            font-weight: 600; cursor: pointer; text-align: center; margin-bottom: 8px;
+        }
+        .trip-btn:hover { background: #e0efff; }
+        .trip-btn.active { background: #0066cc; color: white; border-style: solid; }
+        .trip-btn.reset { border-color: #999; background: #f5f5f5; color: #666; border-style: solid; padding: 6px; font-size: 11px; }
+        .trip-result { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f8f9fa; border-radius: 6px; margin-bottom: 4px; font-size: 12px; }
+        .trip-result .route-badge { background: #0066cc; color: white; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; }
+        .trip-result .duration { font-weight: 700; color: #1a1a1a; }
+        .driving-comparison { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #fff3e0; border-radius: 6px; margin-top: 8px; font-size: 12px; }
+        .driving-comparison .label { color: #e65100; font-weight: 600; }
+        .driving-comparison .value { color: #333; font-weight: 700; }
+        .trip-loading, .trip-empty { text-align: center; padding: 12px; color: #999; font-size: 12px; }
+        .trip-empty { background: #f8f9fa; border-radius: 6px; }
+
+        /* Corridors panel */
+        .corridors-panel {
+            position: absolute; top: 16px; right: 16px; background: white;
+            border-radius: 12px; padding: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+            z-index: 10; width: 320px; max-height: calc(100vh - 32px); overflow-y: auto; display: none;
+        }
+        .corridors-panel.visible { display: block; }
+        .corridors-panel h2 { font-size: 14px; margin-bottom: 12px; color: #1a1a1a; display: flex; justify-content: space-between; align-items: center; }
+        .corridors-panel h2 .close-btn { cursor: pointer; color: #999; font-size: 18px; line-height: 1; }
+        .corridor-item { padding: 10px; border-radius: 8px; margin-bottom: 6px; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; }
+        .corridor-item:hover { background: #f0f7ff; }
+        .corridor-item.active { border-color: #0066cc; background: #f0f7ff; }
+        .corridor-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .corridor-rank { font-size: 11px; font-weight: 700; color: #999; width: 18px; }
+        .corridor-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px; color: white; }
+        .corridor-name { font-size: 11px; color: #666; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .corridor-stats { display: flex; justify-content: space-between; align-items: center; margin-left: 26px; }
+        .corridor-trips { font-size: 18px; font-weight: 700; color: #1a1a1a; }
+        .corridor-trips small { font-size: 10px; font-weight: 400; color: #999; }
+        .corridor-sparkline { display: flex; align-items: flex-end; gap: 1px; height: 24px; }
+        .spark-bar { width: 3px; border-radius: 1px; transition: height 0.3s; }
+        .spark-bar.current { opacity: 1; }
+        .spark-bar:not(.current) { opacity: 0.4; }
+        .congestion-indicator { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
+        .congestion-indicator.high { background: #ffebee; color: #c62828; }
+        .congestion-indicator.medium { background: #fff8e1; color: #f57f17; }
+        .congestion-indicator.low { background: #e8f5e9; color: #2e7d32; }
+        .congestion-indicator .dot { width: 6px; height: 6px; border-radius: 50%; }
+        .congestion-indicator.high .dot { background: #ff1744; }
+        .congestion-indicator.medium .dot { background: #ffc107; }
+        .congestion-indicator.low .dot { background: #00c853; }
+
+        /* Loading overlay */
+        .loading-overlay {
+            position: absolute; bottom: 56px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); color: white; padding: 10px 24px; border-radius: 24px;
+            font-size: 13px; z-index: 20; display: none; align-items: center; gap: 10px;
+        }
+        .loading-overlay.visible { display: flex; }
+        .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Filter bar */
+        .filter-bar { margin-bottom: 12px; }
+        .filter-bar input {
+            width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px;
+            font-size: 13px; outline: none; transition: border-color 0.2s;
+        }
+        .filter-bar input:focus { border-color: #0066cc; }
+        .filter-bar input::placeholder { color: #bbb; }
+        .filter-info {
+            font-size: 11px; color: #999; margin-top: 4px; display: none;
+        }
+        .filter-info.active { display: block; color: #0066cc; font-weight: 600; }
+        .filter-bar .clear-filter {
+            display: none; position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; font-size: 16px; color: #999; cursor: pointer; line-height: 1;
+        }
+        .filter-bar .clear-filter:hover { color: #333; }
+        .filter-bar .input-wrap { position: relative; }
+
+        /* Hide sections based on mode */
+        .explorer-only, .live-only { display: none; }
+        body.mode-explorer .explorer-only { display: block; }
+        body.mode-explorer .time-controls { display: flex; }
+        body.mode-live .live-only { display: block; }
+    </style>
+</head>
+<body class="mode-live">
+    <div id="map"></div>
+
+    <div class="controls">
+        <h1>TransLink Transit Map</h1>
+
+        <!-- Mode switch (hidden — explorer disabled for now) -->
+        <div class="mode-switch" id="mode-switch" style="display:none">
+            <button class="mode-btn" id="mode-explorer-btn" onclick="setMode('explorer')">Explorer</button>
+            <button class="mode-btn active live-mode" id="mode-live-btn" onclick="setMode('live')"><span class="live-dot" id="live-dot"></span>Live</button>
+        </div>
+
+        <!-- Live clock -->
+        <div class="live-time-display" id="live-time-box">
+            <div class="clock" id="live-clock"></div>
+            <div>Live data &mdash; auto-refreshing every 10s</div>
+        </div>
+
+        <!-- Layer toggles -->
+        <div class="toggle-group">
+            <button class="toggle-btn active" id="btn-congestion" onclick="toggleLayer('congestion')">Congestion</button>
+            <button class="toggle-btn active" id="btn-routes" onclick="toggleLayer('routes')">Routes</button>
+            <button class="toggle-btn" id="btn-stops" onclick="toggleLayer('stops')">Stops</button>
+            <button class="toggle-btn" id="btn-frequency" onclick="toggleLayer('frequency')">Frequency</button>
+            <button class="toggle-btn" id="btn-corridors" onclick="toggleCorridors()">Top 10</button>
+        </div>
+
+        <!-- Filter -->
+        <div class="filter-bar">
+            <div class="input-wrap">
+                <input type="text" id="filter-input" placeholder="Filter by route or vehicle ID..." oninput="onFilterChange(this.value)">
+                <button class="clear-filter" id="clear-filter-btn" onclick="clearFilter()">&times;</button>
+            </div>
+            <div class="filter-info" id="filter-info"></div>
+        </div>
+
+        <!-- Quick help -->
+        <div style="font-size:11px;color:#666;line-height:1.6;margin-bottom:12px;padding:10px;background:#f8f9fa;border-radius:8px">
+            <div style="font-weight:600;color:#333;margin-bottom:4px">Try filtering by route:</div>
+            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+                <span onclick="document.getElementById('filter-input').value='099';onFilterChange('099')" style="cursor:pointer;padding:2px 8px;background:#0066cc;color:white;border-radius:4px;font-weight:600">099</span>
+                <span onclick="document.getElementById('filter-input').value='014';onFilterChange('014')" style="cursor:pointer;padding:2px 8px;background:#0066cc;color:white;border-radius:4px;font-weight:600">014</span>
+                <span onclick="document.getElementById('filter-input').value='049';onFilterChange('049')" style="cursor:pointer;padding:2px 8px;background:#0066cc;color:white;border-radius:4px;font-weight:600">049</span>
+                <span onclick="document.getElementById('filter-input').value='025';onFilterChange('025')" style="cursor:pointer;padding:2px 8px;background:#0066cc;color:white;border-radius:4px;font-weight:600">025</span>
+            </div>
+            <div style="color:#999;font-size:10px;line-height:1.5">
+                Or type a <strong>vehicle ID</strong> (e.g. the number on a bus dot) to see its route, stops, and congestion.<br>
+                <strong>Congestion</strong> shows real-time traffic from bus speeds.<br>
+                <strong>Stops</strong> and <strong>Frequency</strong> toggle on to see stop locations and trip counts.<br>
+                <strong>Top 10</strong> opens the busiest corridors panel.
+            </div>
+        </div>
+
+        <!-- Explorer mode: time controls -->
+        <div class="explorer-only">
+            <label>Time of Day</label>
+            <div class="time-display" id="time-display">8:00 AM</div>
+            <div class="time-controls">
+                <button class="play-btn" id="play-btn" onclick="toggleAutoPlay()" title="Auto-play through the day">&#9654;</button>
+                <input type="range" id="hour-slider" min="0" max="23" value="8" oninput="onTimeChange(this.value)">
+            </div>
+
+            <label>Day of Week</label>
+            <div class="day-selector">
+                <button class="day-btn" data-day="1" onclick="selectDay(1)">Sun</button>
+                <button class="day-btn active" data-day="2" onclick="selectDay(2)">Mon</button>
+                <button class="day-btn" data-day="3" onclick="selectDay(3)">Tue</button>
+                <button class="day-btn" data-day="4" onclick="selectDay(4)">Wed</button>
+                <button class="day-btn" data-day="5" onclick="selectDay(5)">Thu</button>
+                <button class="day-btn" data-day="6" onclick="selectDay(6)">Fri</button>
+                <button class="day-btn" data-day="7" onclick="selectDay(7)">Sat</button>
+            </div>
+        </div>
+
+        <div class="legend">
+            <label style="font-weight:600;font-size:11px;color:#999;margin-bottom:6px">MAP LEGEND</label>
+            <div class="legend-item"><div class="legend-color" style="background:#00c853"></div><span>Normal flow (&gt;15 km/h)</span></div>
+            <div class="legend-item"><div class="legend-color" style="background:#ffc107"></div><span>Slow (8-15 km/h)</span></div>
+            <div class="legend-item"><div class="legend-color" style="background:#ff1744"></div><span>Congested (&lt;8 km/h)</span></div>
+            <div style="margin-top:8px">
+                <div class="legend-item"><div class="legend-color" style="background:#ff1744;border-radius:50%;width:10px;height:10px"></div><span>Live bus/train position</span></div>
+            </div>
+        </div>
+
+        <!-- Trip planner (explorer only) -->
+        <div class="explorer-only trip-planner">
+            <h2>Trip Planner</h2>
+            <button class="trip-btn" id="trip-select-btn" onclick="startTripSelect()">Click map to set origin &amp; destination</button>
+            <div class="trip-input"><div class="marker origin"></div><span id="origin-label" class="placeholder">Click map for origin</span></div>
+            <div class="trip-input"><div class="marker dest"></div><span id="dest-label" class="placeholder">Click map for destination</span></div>
+            <button class="trip-btn reset" id="trip-reset-btn" onclick="resetTrip()" style="display:none">Clear trip</button>
+            <div id="trip-results"></div>
+        </div>
+    </div>
+
+    <div class="corridors-panel" id="corridors-panel">
+        <h2>Top Corridors<span class="close-btn" onclick="toggleCorridors()">&times;</span></h2>
+        <div id="corridors-list"></div>
+    </div>
+
+    <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div><span id="loading-text">Fetching live traffic data...</span></div>
+    <div class="stats" id="stats">Loading data...</div>
+
+    <script>
+        // --- State ---
+        let appMode = 'live'; // 'explorer' | 'live'
+        let currentHour = 8;
+        let currentDay = 2;
+        let routesData = [];
+        let stopsData = [];
+        let congestionData = [];
+        let frequencyData = [];
+        let liveVehicles = [];
+        let corridorsData = [];
+        let activeCorridorIdx = null;
+        let corridorsVisible = false;
+        let showLayers = { congestion: true, routes: true, stops: false, frequency: false };
+        let autoPlayInterval = null;
+        let liveRefreshInterval = null;
+        let isLoadingCongestion = false;
+        let tripMode = null;
+        let tripOrigin = null;
+        let tripDest = null;
+        let tripPins = [];
+        let filterText = '';
+        let filterRoute = '';      // resolved route for API calls (may differ from filterText for vehicle filters)
+        let filterVehicleId = '';  // set when filtering by vehicle ID
+        let filterDebounce = null;
+        let currentZoom = 11.5;
+
+        const CONGESTION_COLORS = {
+            HIGH: [255, 23, 68, 200], MEDIUM: [255, 193, 7, 200], LOW: [0, 200, 83, 150],
+        };
+
+        function formatHour(h) {
+            if (h === 0) return "12:00 AM";
+            if (h === 12) return "12:00 PM";
+            return h < 12 ? `${h}:00 AM` : `${h-12}:00 PM`;
+        }
+
+        // Force Pacific timezone for all time-based logic
+        function pacificNow() {
+            return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Vancouver" }));
+        }
+        function nowHour() { return pacificNow().getHours(); }
+        function nowDay() { return pacificNow().getDay() + 1; } // 1=Sun
+
+        // --- Mode switching ---
+
+        function setMode(mode) {
+            if (mode === appMode) return;
+            appMode = mode;
+
+            // Stop any running timers
+            if (autoPlayInterval) stopAutoPlay();
+            if (liveRefreshInterval) { clearInterval(liveRefreshInterval); liveRefreshInterval = null; }
+
+            // Update UI
+            document.body.className = `mode-${mode}`;
+            document.getElementById("mode-explorer-btn").classList.toggle("active", mode === 'explorer');
+            document.getElementById("mode-live-btn").classList.toggle("active", mode === 'live');
+            document.getElementById("mode-live-btn").classList.toggle("live-mode", mode === 'live');
+            document.getElementById("mode-switch").classList.toggle("live-active", mode === 'live');
+            document.getElementById("live-dot").style.display = mode === 'live' ? 'inline-block' : 'none';
+
+            if (mode === 'live') {
+                enterLiveMode();
+            } else {
+                enterExplorerMode();
+            }
+        }
+
+        function enterLiveMode() {
+            // Lock to current time
+            currentHour = nowHour();
+            currentDay = nowDay();
+            updateLiveClock();
+
+            // Clear explorer state
+            resetTrip();
+            liveVehicles = [];
+
+            // Fetch everything for now
+            fetchLiveVehicles();
+            fetchCongestion();
+            if (showLayers.frequency) fetchFrequency();
+            if (corridorsVisible) fetchCorridors();
+
+            // Auto-refresh: vehicles every 10s, congestion + clock every 60s
+            liveRefreshInterval = setInterval(() => {
+                fetchLiveVehicles();
+                const h = nowHour();
+                if (h !== currentHour) {
+                    currentHour = h;
+                    currentDay = nowDay();
+                    fetchCongestion();
+                    if (showLayers.frequency) fetchFrequency();
+                    if (corridorsVisible) fetchCorridors();
+                }
+                updateLiveClock();
+            }, 10000);
+        }
+
+        function enterExplorerMode() {
+            liveVehicles = [];
+            buildLayers();
+            updateStats();
+        }
+
+        function updateLiveClock() {
+            const now = pacificNow();
+            const h = now.getHours();
+            const m = now.getMinutes().toString().padStart(2, '0');
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+            document.getElementById("live-clock").textContent = `${h12}:${m} ${ampm} PST`;
+        }
+
+        // --- deck.gl ---
+
+        const deckgl = new deck.DeckGL({
+            container: "map",
+            mapStyle: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+            initialViewState: { longitude: -123.1207, latitude: 49.2527, zoom: 11.5, pitch: 0, bearing: 0 },
+            controller: true,
+            onViewStateChange: ({viewState}) => {
+                const prevBucket = Math.floor(currentZoom);
+                currentZoom = viewState.zoom;
+                const newBucket = Math.floor(currentZoom);
+                if (prevBucket !== newBucket) buildLayers();
+            },
+            onClick: (info) => {
+                if (tripMode && info.coordinate) onMapClick(info.coordinate[1], info.coordinate[0]);
+            },
+            getCursor: ({isHovering}) => tripMode ? 'crosshair' : (isHovering ? 'pointer' : 'grab'),
+            getTooltip: ({ object }) => {
+                if (!object) return null;
+                if (object._tripPin) return `${object._tripPin === 'origin' ? 'Origin' : 'Destination'}: ${object.name}`;
+                if (object.id && object.route !== undefined && object.trip !== undefined) {
+                    const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+                    const compass = object.bearing != null ? dirs[Math.round(object.bearing / 45) % 8] : '';
+                    let tip = `Vehicle ${object.id}`;
+                    if (object.route) tip += `\nRoute: ${object.route}`;
+                    if (object.speed) tip += `\n${object.speed} km/h`;
+                    if (compass) tip += `\nHeading: ${compass} (${Math.round(object.bearing)}°)`;
+                    return tip;
+                }
+                if (object.trips_per_hour && object.route) {
+                    let tip = `Route ${object.route}: ${object.long_name}\n${object.trips_per_hour} trips/hr`;
+                    if (object.congestion_level) tip += `\nCongestion: ${object.congestion_level}`;
+                    return tip;
+                }
+                if (object.route_name) return `${object.route_name}: ${object.route_long_name || ""}`;
+                if (object.stop_name) return object.stop_name;
+                if (object.name && object.trips) return `${object.name}\n${object.trips} trips/hr`;
+                if (object.level) {
+                    let tip = `Congestion: ${object.level}`;
+                    if (object.speed) tip += `\nSpeed: ${object.speed}`;
+                    if (object.source === 'bus') tip += `\nSource: Bus speed data`;
+                    else if (object.source) tip += `\nSource: Google Traffic`;
+                    if (object.routes && object.routes.length) tip += `\nRoutes: ${object.routes.join(', ')}`;
+                    return tip;
+                }
+                return null;
+            },
+        });
+
+        // --- Filter logic ---
+
+        function resolveFilter() {
+            // Determine if filterText is a route or vehicle ID
+            filterRoute = '';
+            filterVehicleId = '';
+            if (!filterText) return;
+
+            // Check if it matches a route (direct check, not via routeMatchesFilter which reads filterRoute)
+            const matchedRoutes = routesData.filter(r => {
+                const name = (r.route_name || '').toLowerCase();
+                const longName = (r.route_long_name || '').toLowerCase();
+                return name.includes(filterText) || longName.includes(filterText);
+            });
+            if (matchedRoutes.length > 0) {
+                filterRoute = filterText;
+                return;
+            }
+
+            // Check if it matches a vehicle ID — resolve to that vehicle's route
+            const matchedVehicle = liveVehicles.find(v => (v.id || '').toLowerCase() === filterText);
+            if (matchedVehicle && matchedVehicle.route) {
+                filterVehicleId = filterText;
+                filterRoute = matchedVehicle.route.toLowerCase();
+                return;
+            }
+
+            // Partial vehicle ID match
+            const partialVehicle = liveVehicles.find(v => (v.id || '').toLowerCase().includes(filterText));
+            if (partialVehicle && partialVehicle.route) {
+                filterVehicleId = partialVehicle.id.toLowerCase();
+                filterRoute = partialVehicle.route.toLowerCase();
+            }
+        }
+
+        function onFilterChange(val) {
+            clearTimeout(filterDebounce);
+            filterDebounce = setTimeout(() => {
+                filterText = val.trim().toLowerCase();
+                const clearBtn = document.getElementById('clear-filter-btn');
+                const infoEl = document.getElementById('filter-info');
+                clearBtn.style.display = filterText ? 'block' : 'none';
+
+                resolveFilter();
+
+                if (filterText) {
+                    if (filterVehicleId) {
+                        const v = liveVehicles.find(v => (v.id || '').toLowerCase() === filterVehicleId);
+                        infoEl.textContent = v
+                            ? `Vehicle ${v.id} | Route ${v.route}${v.speed ? ' | ' + v.speed + ' km/h' : ''}`
+                            : `Vehicle ${filterText}`;
+                    } else if (filterRoute) {
+                        infoEl.textContent = `Route ${filterRoute.toUpperCase()}`;
+                    } else {
+                        infoEl.textContent = `No matching route or vehicle`;
+                    }
+                    infoEl.classList.add('active');
+                } else {
+                    infoEl.classList.remove('active');
+                }
+
+                // Re-fetch data scoped to the resolved route
+                fetchCongestion();
+                fetchStops();
+                if (showLayers.frequency) fetchFrequency();
+                // Hide corridors when filtered
+                if (filterText) {
+                    document.getElementById('corridors-panel').classList.remove('visible');
+                    document.getElementById('btn-corridors').style.opacity = '0.4';
+                    document.getElementById('btn-corridors').style.pointerEvents = 'none';
+                } else {
+                    document.getElementById('btn-corridors').style.opacity = '';
+                    document.getElementById('btn-corridors').style.pointerEvents = '';
+                }
+                buildLayers();
+                updateStats();
+            }, 500);
+        }
+
+        function clearFilter() {
+            filterText = '';
+            filterRoute = '';
+            filterVehicleId = '';
+            document.getElementById('filter-input').value = '';
+            document.getElementById('clear-filter-btn').style.display = 'none';
+            document.getElementById('filter-info').classList.remove('active');
+            document.getElementById('btn-corridors').style.opacity = '';
+            document.getElementById('btn-corridors').style.pointerEvents = '';
+            fetchCongestion();
+            fetchStops();
+            if (showLayers.frequency) fetchFrequency();
+            buildLayers();
+            updateStats();
+        }
+
+        function matchesFilter(v) {
+            if (!filterText) return true;
+            // Vehicle filter: show only the specific vehicle
+            if (filterVehicleId) {
+                return (v.id || '').toLowerCase() === filterVehicleId;
+            }
+            // Route filter: show all vehicles on the route
+            if (filterRoute) {
+                return (v.route || '').toLowerCase().includes(filterRoute);
+            }
+            return false;
+        }
+
+        function routeMatchesFilter(r) {
+            if (!filterRoute) return true;
+            const name = (r.route_name || '').toLowerCase();
+            const longName = (r.route_long_name || '').toLowerCase();
+            return name.includes(filterRoute) || longName.includes(filterRoute);
+        }
+
+        function congestionMatchesFilter(seg) {
+            if (!filterText) return true;
+            if (seg.routes && seg.routes.length) {
+                return seg.routes.some(r => r.toLowerCase().includes(filterText));
+            }
+            return true; // show unattributed segments when filtering
+        }
+
+
+        function buildLayers() {
+            const layers = [];
+            if (showLayers.frequency && frequencyData.length > 0) {
+                layers.push(new deck.HeatmapLayer({
+                    id: "frequency", data: frequencyData,
+                    getPosition: d => [d.lon, d.lat], getWeight: d => d.trips,
+                    radiusPixels: 40, intensity: 1.5, threshold: 0.05,
+                    colorRange: [[255,255,178],[254,204,92],[253,141,60],[240,59,32],[189,0,38],[128,0,38]],
+                }));
+            }
+
+            if (showLayers.routes && routesData.length > 0) {
+                const filteredRoutes = filterRoute ? routesData.filter(r => routeMatchesFilter(r)) : routesData;
+                layers.push(new deck.PathLayer({
+                    id: "routes", data: filteredRoutes, getPath: d => d.coordinates,
+                    getColor: d => { const c = d.route_color; return (c && c !== "0000FF") ? [parseInt(c.substring(0,2),16),parseInt(c.substring(2,4),16),parseInt(c.substring(4,6),16), filterText ? 180 : 100] : [0,100,200, filterText ? 160 : 80]; },
+                    getWidth: filterText ? 4 : 2, widthMinPixels: 1, widthMaxPixels: filterText ? 8 : 4, pickable: true,
+                }));
+            }
+
+            if (showLayers.congestion && congestionData.length > 0) {
+                // Congestion data is already filtered server-side when route param is set
+                layers.push(new deck.LineLayer({
+                    id: "congestion", data: congestionData,
+                    getSourcePosition: d => d.start, getTargetPosition: d => d.end,
+                    getColor: d => CONGESTION_COLORS[d.level] || [128,128,128,100],
+                    getWidth: d => d.level === "HIGH" ? 6 : d.level === "MEDIUM" ? 4 : 2,
+                    widthMinPixels: 2, widthMaxPixels: 8, pickable: true,
+                }));
+            }
+
+            if (showLayers.stops && stopsData.length > 0) {
+                layers.push(new deck.ScatterplotLayer({
+                    id: "stops", data: stopsData, getPosition: d => [d.lon, d.lat],
+                    getRadius: d => d.location_type === 1 ? 40 : 15,
+                    getFillColor: d => d.location_type === 1 ? [0,100,200,200] : [100,100,100,150], pickable: true,
+                }));
+            }
+
+            if (corridorsVisible && corridorsData.length > 0 && !filterText) {
+                let cd = corridorsData.filter(c => c.coordinates).map((c,i) => ({...c, _idx: i}));
+                if (filterText) cd = cd.filter(c => (c.route||'').toLowerCase().includes(filterText) || (c.long_name||'').toLowerCase().includes(filterText));
+                if (cd.length > 0) {
+                    layers.push(new deck.PathLayer({
+                        id: "corridors", data: cd, getPath: d => d.coordinates,
+                        getColor: d => {
+                            if (activeCorridorIdx !== null && d._idx !== activeCorridorIdx) return [150,150,150,60];
+                            if (d.congestion_level === "HIGH") return [255,23,68,230];
+                            if (d.congestion_level === "MEDIUM") return [255,193,7,220];
+                            if (d.congestion_level === "LOW") return [0,200,83,200];
+                            return [0,102,204,180];
+                        },
+                        getWidth: d => { const base = 3 + (d.trips_per_hour / 20); return (activeCorridorIdx !== null && d._idx === activeCorridorIdx) ? base+3 : base; },
+                        widthMinPixels: 3, widthMaxPixels: 14, pickable: true,
+                    }));
+                }
+            }
+
+            // Live vehicles — show when zoomed in (>=13) or when filtered
+            if (appMode === 'live' && liveVehicles.length > 0 && (currentZoom >= 13 || filterText)) {
+                const filteredVehicles = filterText ? liveVehicles.filter(v => matchesFilter(v)) : liveVehicles;
+
+                // Vehicle dot
+                layers.push(new deck.ScatterplotLayer({
+                    id: "live-vehicles", data: filteredVehicles,
+                    getPosition: d => [d.lon, d.lat], getRadius: 30,
+                    getFillColor: [255, 23, 68, 200], getLineColor: [255,255,255,255],
+                    getLineWidth: 1, stroked: true, lineWidthMinPixels: 1,
+                    radiusMinPixels: 4, radiusMaxPixels: 8, pickable: true,
+                    transitions: { getPosition: { duration: 1000, type: 'spring' } },
+                }));
+
+                // Route:ID labels next to each vehicle (only at zoom >= 14 or when filtered)
+                if (currentZoom >= 14 || filterText) {
+                    layers.push(new deck.TextLayer({
+                        id: "vehicle-labels", data: filteredVehicles,
+                        getPosition: d => [d.lon, d.lat],
+                        getText: d => `${d.route || '?'}:${d.id}`,
+                        getSize: 12, getColor: [40, 40, 40, 230],
+                        getPixelOffset: [14, -14],
+                        fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+                        fontWeight: 700, outlineWidth: 2, outlineColor: [255, 255, 255, 220],
+                        sizeMinPixels: 10, sizeMaxPixels: 14,
+                        pickable: false, billboard: true,
+                    }));
+                }
+            }
+
+            if (tripPins.length > 0) {
+                layers.push(new deck.ScatterplotLayer({
+                    id: "trip-pins", data: tripPins, getPosition: d => [d.lon, d.lat], getRadius: 80,
+                    getFillColor: d => d._tripPin === 'origin' ? [0,102,204,220] : [255,23,68,220],
+                    getLineColor: [255,255,255,255], getLineWidth: 3, stroked: true, lineWidthMinPixels: 2, pickable: true,
+                }));
+            }
+
+            deckgl.setProps({ layers });
+        }
+
+        function updateStats() {
+            const el = document.getElementById("stats");
+            const parts = [];
+            if (filterText) {
+                if (filterVehicleId) {
+                    const v = liveVehicles.find(v => (v.id || '').toLowerCase() === filterVehicleId);
+                    parts.push(`Vehicle ${filterVehicleId}`);
+                    if (v) parts.push(`Route ${v.route}`);
+                } else {
+                    parts.push(`Route ${filterRoute.toUpperCase()}`);
+                }
+                if (congestionData.length > 0) parts.push(`${congestionData.length} segments`);
+                if (stopsData.length > 0) parts.push(`${stopsData.length} stops`);
+                el.textContent = parts.join(" | ");
+                return;
+            }
+            if (appMode === 'live') parts.push(`LIVE`);
+            if (congestionData.length > 0) {
+                const high = congestionData.filter(d => d.level === "HIGH").length;
+                parts.push(`${congestionData.length} segments, ${high} congested`);
+            }
+            if (appMode === 'live' && liveVehicles.length > 0) parts.push(`${liveVehicles.length} vehicles`);
+            if (showLayers.frequency && frequencyData.length > 0) parts.push(`${frequencyData.length} stops tracked`);
+            parts.push(`${routesData.length} routes`);
+            el.textContent = parts.join(" | ");
+        }
+
+        // --- Auto-play (explorer only) ---
+
+        function toggleAutoPlay() {
+            if (appMode !== 'explorer') return;
+            autoPlayInterval ? stopAutoPlay() : startAutoPlay();
+        }
+        function startAutoPlay() {
+            document.getElementById("play-btn").innerHTML = "&#9646;&#9646;";
+            document.getElementById("play-btn").classList.add("playing");
+            if (currentHour < 5) currentHour = 5;
+            autoPlayInterval = setInterval(() => {
+                currentHour = (currentHour + 1) % 24;
+                document.getElementById("hour-slider").value = currentHour;
+                document.getElementById("time-display").textContent = formatHour(currentHour);
+                fetchCongestion();
+                if (showLayers.frequency) fetchFrequency();
+                if (corridorsVisible) fetchCorridors();
+                if (currentHour === 1) stopAutoPlay();
+            }, 1500);
+        }
+        function stopAutoPlay() {
+            clearInterval(autoPlayInterval); autoPlayInterval = null;
+            document.getElementById("play-btn").innerHTML = "&#9654;";
+            document.getElementById("play-btn").classList.remove("playing");
+        }
+
+        // --- Loading ---
+        function showLoading(text) { document.getElementById("loading-text").textContent = text || "Loading..."; document.getElementById("loading-overlay").classList.add("visible"); }
+        function hideLoading() { document.getElementById("loading-overlay").classList.remove("visible"); }
+
+        // --- Corridor congestion scoring ---
+        function scoreCorridorCongestion() {
+            if (!corridorsData.length || !congestionData.length) return;
+            for (const corridor of corridorsData) {
+                if (!corridor.coordinates || corridor.coordinates.length < 2) { corridor.congestion_level = null; continue; }
+                const midpoints = [];
+                const step = Math.max(1, Math.floor(corridor.coordinates.length / 20));
+                for (let i = 0; i < corridor.coordinates.length; i += step) midpoints.push(corridor.coordinates[i]);
+                let high = 0, medium = 0, low = 0, matched = 0;
+                const threshold = 0.005;
+                for (const seg of congestionData) {
+                    const sLon = (seg.start[0]+seg.end[0])/2, sLat = (seg.start[1]+seg.end[1])/2;
+                    for (const mp of midpoints) {
+                        if (Math.abs(mp[0]-sLon) < threshold && Math.abs(mp[1]-sLat) < threshold) {
+                            matched++; if (seg.level==="HIGH") high++; else if (seg.level==="MEDIUM") medium++; else low++; break;
+                        }
+                    }
+                }
+                if (!matched) { corridor.congestion_level = null; }
+                else {
+                    corridor.congestion_pct_high = Math.round(100*high/matched);
+                    corridor.congestion_pct_med = Math.round(100*medium/matched);
+                    corridor.congestion_matched = matched;
+                    corridor.congestion_level = (high/matched > 0.3) ? "HIGH" : (medium/matched > 0.3) ? "MEDIUM" : "LOW";
+                }
+            }
+        }
+
+        // --- Event handlers ---
+
+        function onTimeChange(hour) {
+            if (appMode !== 'explorer') return;
+            if (autoPlayInterval) stopAutoPlay();
+            currentHour = parseInt(hour);
+            document.getElementById("time-display").textContent = formatHour(currentHour);
+            fetchCongestion();
+            if (showLayers.frequency) fetchFrequency();
+            if (corridorsVisible) fetchCorridors();
+        }
+
+        function selectDay(day) {
+            if (appMode !== 'explorer') return;
+            currentDay = day;
+            document.querySelectorAll(".day-btn").forEach(btn => btn.classList.toggle("active", parseInt(btn.dataset.day) === day));
+            fetchCongestion();
+        }
+
+        function toggleLayer(name) {
+            showLayers[name] = !showLayers[name];
+            document.getElementById(`btn-${name}`).classList.toggle("active");
+            if (name === 'frequency' && showLayers.frequency) fetchFrequency();
+            if (name === 'stops' && showLayers.stops) fetchStops();
+            buildLayers();
+        }
+
+        // --- Trip Planner (explorer only) ---
+
+        function startTripSelect() {
+            if (appMode !== 'explorer') return;
+            const btn = document.getElementById("trip-select-btn");
+            if (tripMode) { tripMode = null; btn.classList.remove("active"); btn.textContent = "Click map to set origin & destination"; }
+            else { tripMode = tripOrigin ? 'dest' : 'origin'; btn.classList.add("active"); btn.textContent = tripMode === 'origin' ? "Click map for ORIGIN..." : "Click map for DESTINATION..."; }
+        }
+
+        async function onMapClick(lat, lon) {
+            if (!tripMode) return;
+            const resp = await fetch(`/api/nearest-stops?lat=${lat}&lon=${lon}&limit=1`);
+            const data = await resp.json();
+            const stopName = (data.stops && data.stops.length > 0) ? data.stops[0].name : `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+            if (tripMode === 'origin') {
+                tripOrigin = { lat, lon, name: stopName };
+                document.getElementById("origin-label").textContent = stopName;
+                document.getElementById("origin-label").classList.remove("placeholder");
+                tripMode = 'dest';
+                document.getElementById("trip-select-btn").textContent = "Click map for DESTINATION...";
+            } else {
+                tripDest = { lat, lon, name: stopName };
+                document.getElementById("dest-label").textContent = stopName;
+                document.getElementById("dest-label").classList.remove("placeholder");
+                tripMode = null;
+                document.getElementById("trip-select-btn").classList.remove("active");
+                document.getElementById("trip-select-btn").textContent = "Click map to set origin & destination";
+                document.getElementById("trip-reset-btn").style.display = "block";
+                fetchTripPlan();
+            }
+            tripPins = [];
+            if (tripOrigin) tripPins.push({...tripOrigin, _tripPin: 'origin'});
+            if (tripDest) tripPins.push({...tripDest, _tripPin: 'dest'});
+            buildLayers();
+        }
+
+        function resetTrip() {
+            tripOrigin = null; tripDest = null; tripMode = null; tripPins = [];
+            document.getElementById("origin-label").textContent = "Click map for origin";
+            document.getElementById("origin-label").classList.add("placeholder");
+            document.getElementById("dest-label").textContent = "Click map for destination";
+            document.getElementById("dest-label").classList.add("placeholder");
+            document.getElementById("trip-results").innerHTML = "";
+            document.getElementById("trip-reset-btn").style.display = "none";
+            document.getElementById("trip-select-btn").classList.remove("active");
+            document.getElementById("trip-select-btn").textContent = "Click map to set origin & destination";
+            buildLayers();
+        }
+
+        async function fetchTripPlan() {
+            if (!tripOrigin || !tripDest) return;
+            const el = document.getElementById("trip-results");
+            el.innerHTML = '<div class="trip-loading">Finding routes...</div>';
+            const resp = await fetch(`/api/trip-plan?origin_lat=${tripOrigin.lat}&origin_lon=${tripOrigin.lon}&dest_lat=${tripDest.lat}&dest_lon=${tripDest.lon}&hour=${currentHour}`);
+            const data = await resp.json();
+            let html = '';
+            if (data.trips && data.trips.length > 0) {
+                for (const t of data.trips) html += `<div class="trip-result"><span class="route-badge">${t.route}</span><span>${t.board_time.slice(0,5)} &rarr; ${t.alight_time.slice(0,5)}</span><span class="duration">${t.duration_min} min</span></div>`;
+            } else html += '<div class="trip-empty">No direct routes found for this time window</div>';
+            if (data.driving) {
+                const fastest = data.trips?.length > 0 ? Math.min(...data.trips.map(t => t.duration_min)) : null;
+                const diff = fastest ? (data.driving.duration_min - fastest).toFixed(1) : null;
+                const cmp = diff && parseFloat(diff) < 0 ? `Driving ${Math.abs(diff)} min faster` : diff && parseFloat(diff) > 0 ? `Transit ${diff} min faster` : '';
+                html += `<div class="driving-comparison"><span class="label">Driving</span><span>${data.driving.distance_km} km</span><span class="value">${data.driving.duration_min} min</span></div>`;
+                if (cmp) html += `<div style="text-align:center;font-size:11px;color:#666;margin-top:4px">${cmp}</div>`;
+            }
+            el.innerHTML = html;
+        }
+
+        // --- Corridors ---
+
+        function toggleCorridors() {
+            corridorsVisible = !corridorsVisible;
+            document.getElementById("btn-corridors").classList.toggle("active");
+            document.getElementById("corridors-panel").classList.toggle("visible");
+            if (corridorsVisible && corridorsData.length === 0) fetchCorridors();
+            buildLayers();
+        }
+        function selectCorridor(idx) { activeCorridorIdx = (activeCorridorIdx === idx) ? null : idx; renderCorridorsList(); buildLayers(); }
+
+        function renderCorridorsList() {
+            const el = document.getElementById("corridors-list");
+            if (!corridorsData.length) { el.innerHTML = '<div class="trip-loading">Loading corridors...</div>'; return; }
+            const maxTrips = Math.max(...corridorsData.map(c => c.trips_per_hour));
+            el.innerHTML = corridorsData.map((c, i) => {
+                const profile = c.hourly_profile || [];
+                const maxH = Math.max(...profile.map(p => p.trips), 1);
+                const sparkBars = profile.map(p =>
+                    `<div class="spark-bar ${p.hour===currentHour?'current':''}" style="height:${Math.max(2,(p.trips/maxH)*24)}px;background:${p.hour===currentHour?'#0066cc':'#aaa'}"></div>`
+                ).join('');
+                const cl = c.congestion_level;
+                const congBadge = cl ? `<span class="congestion-indicator ${cl.toLowerCase()}"><span class="dot"></span>${cl==='HIGH'?c.congestion_pct_high+'% jammed':cl==='MEDIUM'?c.congestion_pct_med+'% slow':'Clear'}</span>` : '';
+                const badgeBg = (c.color && c.color !== '0066cc') ? `#${c.color}` : `hsl(${Math.round(10+(i/9)*40)},85%,50%)`;
+                return `<div class="corridor-item ${activeCorridorIdx===i?'active':''}" onclick="selectCorridor(${i})">
+                    <div class="corridor-header"><span class="corridor-rank">#${i+1}</span><span class="corridor-badge" style="background:${badgeBg}">${c.route}</span><span class="corridor-name">${c.long_name}</span>${congBadge}</div>
+                    <div class="corridor-stats"><span class="corridor-trips">${c.trips_per_hour} <small>trips/hr</small></span><div class="corridor-sparkline">${sparkBars}</div></div>
+                </div>`;
+            }).join('');
+        }
+
+        async function fetchCorridors() {
+            const resp = await fetch(`/api/top-corridors?hour=${currentHour}&limit=10`);
+            const data = await resp.json();
+            corridorsData = data.corridors;
+            scoreCorridorCongestion();
+            renderCorridorsList();
+            buildLayers();
+        }
+
+        // --- Data fetching ---
+
+        async function fetchRoutes() { const d = await (await fetch("/api/routes")).json(); routesData = d.routes; buildLayers(); updateStats(); }
+        async function fetchStops() {
+            let url = "/api/stops";
+            if (filterRoute) url += `?route=${encodeURIComponent(filterRoute)}`;
+            const d = await (await fetch(url)).json();
+            stopsData = d.stops;
+            buildLayers(); updateStats();
+        }
+
+        async function fetchCongestion() {
+            isLoadingCongestion = true;
+            const isLive = appMode === 'live';
+            const routeFilter = filterRoute || '';
+            const loadMsg = routeFilter
+                ? `Loading traffic for route ${routeFilter} at ${formatHour(currentHour)}...`
+                : (isLive ? "Fetching live traffic..." : `Loading traffic for ${formatHour(currentHour)}...`);
+            showLoading(loadMsg);
+            try {
+                let url = `/api/congestion?hour=${currentHour}&day=${currentDay}`;
+                if (isLive) url += '&live=true';
+                if (routeFilter) url += `&route=${encodeURIComponent(routeFilter)}`;
+                const resp = await fetch(url);
+                const data = await resp.json();
+                congestionData = data.segments;
+                if (corridorsVisible && corridorsData.length > 0) { scoreCorridorCongestion(); renderCorridorsList(); }
+                buildLayers(); updateStats();
+            } catch (e) { console.error("Congestion fetch failed:", e); }
+            finally { isLoadingCongestion = false; hideLoading(); }
+        }
+
+        async function fetchFrequency() {
+            let url = `/api/frequency?hour=${currentHour}`;
+            if (filterRoute) url += `&route=${encodeURIComponent(filterRoute)}`;
+            const d = await (await fetch(url)).json();
+            frequencyData = d.stops;
+            buildLayers(); updateStats();
+        }
+
+        async function fetchLiveVehicles() {
+            try { const d = await (await fetch("/api/live-vehicles")).json(); liveVehicles = d.vehicles || []; buildLayers(); updateStats(); }
+            catch (e) { console.error("Live vehicle fetch failed:", e); }
+        }
+
+        // --- Init ---
+        fetchRoutes();
+        fetchStops();
+        enterLiveMode();
+    </script>
+</body>
+</html>

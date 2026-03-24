@@ -1,0 +1,31 @@
+command:
+  - uvicorn
+  - main:app
+  - --host
+  - 0.0.0.0
+  - --port
+  - "8000"
+
+resources:
+  - name: google-routes-secret
+    secret:
+      scope: transit_congestion_map
+      key: google_routes_api_key
+      permission: READ
+  - name: translink-secret
+    secret:
+      scope: transit_congestion_map
+      key: translink_api_key
+      permission: READ
+
+env:
+  - name: LAKEBASE_PROJECT
+    value: transit-cache
+  - name: LAKEBASE_ENDPOINT
+    value: projects/transit-cache/branches/production/endpoints/primary
+  - name: LAKEBASE_HOST
+    value: ep-billowing-tooth-eehfouat.database.westus2.azuredatabricks.net
+  - name: SECRETS_SCOPE
+    value: transit_congestion_map
+  - name: LAKEBASE_NATIVE_PASSWORD
+    value: transit-app-2026
