@@ -5,35 +5,47 @@ resources:
       catalog: "${var.catalog}"
       target: "${var.schema}"
       development: true
-      channel: PREVIEW
+      channel: CURRENT
       serverless: true
       configuration:
         catalog: "${var.catalog}"
         schema: "${var.schema}"
         volume: "${var.volume}"
       libraries:
-        # Bronze layer
+        # Bronze — GTFS ingestion
+        - notebook:
+            path: ../src/pipeline/bronze_gtfs_routes.sql
+        - notebook:
+            path: ../src/pipeline/bronze_gtfs_stops.sql
+        - notebook:
+            path: ../src/pipeline/bronze_gtfs_trips.sql
+        - notebook:
+            path: ../src/pipeline/bronze_gtfs_stop_times.sql
+        - notebook:
+            path: ../src/pipeline/bronze_gtfs_shapes.sql
+        - notebook:
+            path: ../src/pipeline/bronze_gtfs_calendar.sql
+        # Bronze — Google Routes API
         - notebook:
             path: ../src/pipeline/bronze_traffic_api.sql
+        # Silver — GTFS
         - notebook:
-            path: ../src/pipeline/bronze_eap_fact_traffic.sql
+            path: ../src/pipeline/silver_gtfs_routes.sql
         - notebook:
-            path: ../src/pipeline/bronze_eap_dim_corridors.sql
+            path: ../src/pipeline/silver_gtfs_stops.sql
         - notebook:
-            path: ../src/pipeline/bronze_eap_dim_sensors.sql
-        # Silver layer
+            path: ../src/pipeline/silver_gtfs_scheduled_times.sql
+        - notebook:
+            path: ../src/pipeline/silver_gtfs_route_shapes.sql
+        # Silver — API
         - notebook:
             path: ../src/pipeline/silver_traffic_readings.sql
-        - notebook:
-            path: ../src/pipeline/silver_fact_traffic_counts.sql
-        - notebook:
-            path: ../src/pipeline/silver_dim_corridors.sql
-        - notebook:
-            path: ../src/pipeline/silver_dim_sensors.sql
-        # Gold layer
+        # Gold
         - notebook:
             path: ../src/pipeline/gold_corridor_daily_summary.sql
         - notebook:
             path: ../src/pipeline/gold_congestion_patterns.sql
         - notebook:
-            path: ../src/pipeline/gold_sensor_reliability.py
+            path: ../src/pipeline/gold_schedule_vs_actual.sql
+        - notebook:
+            path: ../src/pipeline/gold_route_delay_patterns.sql

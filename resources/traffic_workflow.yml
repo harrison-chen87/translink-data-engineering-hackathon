@@ -7,8 +7,32 @@ resources:
           spec:
             client: "2"
       tasks:
-        # Task 1: Poll the Google Routes API and write JSON to Volume
+        # Task 1: Download GTFS data directly into the volume
+        - task_key: acquire_gtfs_data
+          notebook_task:
+            notebook_path: ../src/notebooks/acquire_gtfs_data.py
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+              volume: "${var.volume}"
+          environment_key: default
+
+        # Task 2: Generate route corridors from GTFS shapes
+        - task_key: generate_corridors
+          depends_on:
+            - task_key: acquire_gtfs_data
+          notebook_task:
+            notebook_path: ../src/notebooks/generate_corridors.py
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+              volume: "${var.volume}"
+          environment_key: default
+
+        # Task 3: Poll the Google Routes API for live traffic data
         - task_key: poll_routes_api
+          depends_on:
+            - task_key: generate_corridors
           notebook_task:
             notebook_path: ../src/notebooks/poll_routes_api.py
             base_parameters:
@@ -17,7 +41,7 @@ resources:
               volume: "${var.volume}"
           environment_key: default
 
-        # Task 2: Run the SDP pipeline (bronze → silver → gold)
+        # Task 4: Run the SDP pipeline (bronze → silver → gold)
         - task_key: run_pipeline
           depends_on:
             - task_key: poll_routes_api
@@ -25,7 +49,7 @@ resources:
             pipeline_id: ${resources.pipelines.traffic_pipeline.id}
             full_refresh: false
 
-        # Task 3: Apply constraints, tags, and comments
+        # Task 5: Apply comments and tags
         - task_key: apply_constraints
           depends_on:
             - task_key: run_pipeline
@@ -36,7 +60,7 @@ resources:
               schema: "${var.schema}"
           environment_key: default
 
-        # Task 4: Deploy metric views
+        # Task 6: Deploy metric views
         - task_key: deploy_metric_views
           depends_on:
             - task_key: run_pipeline

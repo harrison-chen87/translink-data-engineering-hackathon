@@ -148,5 +148,15 @@
     "num_lanes": 4,
     "origin": {"lat": 49.2110, "lng": -122.8912},
     "destination": {"lat": 49.2020, "lng": -122.8912}
+  },
+  {
+    "corridor_id": "corridor_16",
+    "corridor_name": "99 B-Line (Commercial-Broadway to UBC Exchange)",
+    "corridor_type": "transit_arterial",
+    "zone": "vancouver_west",
+    "speed_limit_kmh": 50,
+    "num_lanes": 4,
+    "origin": {"lat": 49.2627, "lng": -123.0694},
+    "destination": {"lat": 49.2686, "lng": -123.2460}
   }
 ]
