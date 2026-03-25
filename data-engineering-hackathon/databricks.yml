@@ -14,7 +14,7 @@ variables:
     description: SQL warehouse ID (for metric views job)
 
 workspace:
-  root_path: ~/.bundle/${bundle.name}
+  root_path: /Workspace/Shared/.bundle/${workspace.current_user.short_name}/${bundle.name}
 
 include:
   - resources/*.yml

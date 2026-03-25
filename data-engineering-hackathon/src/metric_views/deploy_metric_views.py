@@ -13,6 +13,9 @@ dbutils.widgets.text("schema", "", "Schema")
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
 
+if catalog:
+    spark.sql(f"USE CATALOG {catalog}")
+
 # COMMAND ----------
 
 # MAGIC %md

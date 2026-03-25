@@ -48,7 +48,7 @@ SCHEMA="transit_congestion_map"
 VOLUME="gtfs_data"
 SECRETS_SCOPE="transit_congestion_map"
 LAKEBASE_PROJECT="transit-cache"
-WORKSPACE_PATH="/Workspace/Users/${USERNAME}/transit-congestion-map"
+WORKSPACE_PATH="/Workspace/Shared/transit-congestion-map"
 
 echo ""
 echo "Enter your API keys (they will be stored in Databricks Secrets only):"
@@ -87,7 +87,7 @@ fi
 # -----------------------------------------------
 
 echo ""
-echo "[1/6] Creating schema and volume..."
+echo "[1/7] Creating schema and volume..."
 
 # Find a SQL warehouse for executing statements
 WAREHOUSE_ID=$(
@@ -116,7 +116,7 @@ databricks warehouses start "$WAREHOUSE_ID" --wait $PROFILE_FLAG >/dev/null 2>&1
 RESULT=$(databricks api post /api/2.0/sql/statements $PROFILE_FLAG --json "{
   \"warehouse_id\": \"${WAREHOUSE_ID}\",
   \"statement\": \"CREATE SCHEMA IF NOT EXISTS ${CATALOG}.${SCHEMA}\",
-  \"wait_timeout\": \"120s\"
+  \"wait_timeout\": \"30s\"
 }" 2>&1) || true
 STATE=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',{}).get('state','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
 if [[ "$STATE" != "SUCCEEDED" ]]; then
@@ -127,7 +127,7 @@ fi
 RESULT=$(databricks api post /api/2.0/sql/statements $PROFILE_FLAG --json "{
   \"warehouse_id\": \"${WAREHOUSE_ID}\",
   \"statement\": \"CREATE VOLUME IF NOT EXISTS ${CATALOG}.${SCHEMA}.${VOLUME}\",
-  \"wait_timeout\": \"120s\"
+  \"wait_timeout\": \"30s\"
 }" 2>&1) || true
 STATE=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',{}).get('state','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
 if [[ "$STATE" != "SUCCEEDED" ]]; then
@@ -137,7 +137,7 @@ fi
 echo "  Schema and volume created."
 
 echo ""
-echo "[2/6] Creating secrets scope and storing API keys..."
+echo "[2/7] Creating secrets scope and storing API keys..."
 # Create scope (ignore error if it already exists)
 databricks secrets create-scope ${SECRETS_SCOPE} $PROFILE_FLAG 2>/dev/null || true
 databricks secrets put-secret ${SECRETS_SCOPE} google_routes_api_key \
@@ -147,52 +147,41 @@ databricks secrets put-secret ${SECRETS_SCOPE} translink_api_key \
 echo "  Secrets stored."
 
 echo ""
-echo "[3/6] Creating Lakebase database..."
-# Create Lakebase database (ignore error if it already exists)
-databricks lakebase databases create ${LAKEBASE_PROJECT} $PROFILE_FLAG 2>/dev/null || true
+echo "[3/7] Creating Lakebase database..."
 
-echo "  Waiting for Lakebase to become ACTIVE..."
-for i in $(seq 1 30); do
-    DB_STATUS=$(databricks lakebase databases get ${LAKEBASE_PROJECT} $PROFILE_FLAG 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('state','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
-    if [ "$DB_STATUS" = "ACTIVE" ]; then
-        echo "  Lakebase database is ACTIVE."
-        break
-    fi
-    if [ "$i" -eq 30 ]; then
-        echo "  WARNING: Lakebase not yet ACTIVE after 5 minutes. Continuing — it may be ready by pipeline step 04."
-    fi
-    sleep 10
-done
+LAKEBASE_ENDPOINT="projects/${LAKEBASE_PROJECT}/branches/production/endpoints/primary"
+LAKEBASE_HOST=""
+LAKEBASE_NATIVE_PASSWORD=""
 
-# Get Lakebase endpoint details
-LAKEBASE_INFO=$(databricks lakebase databases get ${LAKEBASE_PROJECT} $PROFILE_FLAG 2>/dev/null || echo "{}")
-LAKEBASE_ENDPOINT=$(echo "$LAKEBASE_INFO" | python3 -c "
-import sys, json
-info = json.load(sys.stdin)
-# Build endpoint path from database name
-name = info.get('name', '${LAKEBASE_PROJECT}')
-print(f'projects/{name}/branches/production/endpoints/primary')
-" 2>/dev/null || echo "projects/${LAKEBASE_PROJECT}/branches/production/endpoints/primary")
+# Try the CLI command first; fall back to setup_lakebase.sh if unavailable
+LAKEBASE_SETUP_NEEDED=false
+if databricks lakebase databases create ${LAKEBASE_PROJECT} $PROFILE_FLAG 2>/dev/null; then
+    echo "  Created via CLI."
+    echo "  Waiting for Lakebase to become ACTIVE..."
+    for i in $(seq 1 30); do
+        DB_STATUS=$(databricks lakebase databases get ${LAKEBASE_PROJECT} $PROFILE_FLAG 2>/dev/null \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('state','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
+        if [ "$DB_STATUS" = "ACTIVE" ]; then
+            echo "  Lakebase database is ACTIVE."
+            # Extract host from CLI
+            LAKEBASE_HOST=$(databricks lakebase databases get ${LAKEBASE_PROJECT} $PROFILE_FLAG 2>/dev/null \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('endpoint',{}).get('host',''))" 2>/dev/null || echo "")
+            break
+        fi
+        if [ "$i" -eq 30 ]; then
+            echo "  WARNING: Not ACTIVE after 5 minutes."
+            LAKEBASE_SETUP_NEEDED=true
+        fi
+        sleep 10
+    done
+else
+    echo "  CLI 'lakebase' command not available. Using REST API fallback..."
+    LAKEBASE_SETUP_NEEDED=true
+fi
 
-LAKEBASE_HOST=$(echo "$LAKEBASE_INFO" | python3 -c "
-import sys, json
-info = json.load(sys.stdin)
-ep = info.get('endpoint', {})
-print(ep.get('host', ''))
-" 2>/dev/null || echo "")
-
-if [ -z "$LAKEBASE_HOST" ]; then
-    # Try to extract from endpoints list
-    LAKEBASE_HOST=$(databricks lakebase endpoints list --database ${LAKEBASE_PROJECT} $PROFILE_FLAG 2>/dev/null | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-endpoints = data if isinstance(data, list) else data.get('endpoints', [])
-for ep in endpoints:
-    host = ep.get('host', '') or ep.get('hostname', '')
-    if host:
-        print(host)
-        break
-" 2>/dev/null || echo "")
+if [ "$LAKEBASE_SETUP_NEEDED" = true ] || [ -z "$LAKEBASE_HOST" ]; then
+    # Use setup_lakebase.sh for REST API-based provisioning
+    source "${SCRIPT_DIR}/setup_lakebase.sh" --setup
 fi
 
 if [ -z "$LAKEBASE_HOST" ]; then
@@ -208,7 +197,7 @@ echo "  Lakebase host:     ${LAKEBASE_HOST}"
 # -----------------------------------------------
 
 echo ""
-echo "[4/6] Preparing notebooks and app with your configuration..."
+echo "[4/7] Preparing notebooks and app with your configuration..."
 rm -rf "${STAGING_DIR}"
 mkdir -p "${STAGING_DIR}/pipeline" "${STAGING_DIR}/app"
 
@@ -234,6 +223,12 @@ sed \
     -e "s|value: transit_congestion_map|value: ${SECRETS_SCOPE}|g" \
     "${SRC_DIR}/app/app.yaml" > "${STAGING_DIR}/app/app.yaml"
 
+# Inject LAKEBASE_NATIVE_PASSWORD env var if set (needed for autoscale SP auth)
+if [ -n "${LAKEBASE_NATIVE_PASSWORD:-}" ]; then
+    echo "  - name: LAKEBASE_NATIVE_PASSWORD" >> "${STAGING_DIR}/app/app.yaml"
+    echo "    value: ${LAKEBASE_NATIVE_PASSWORD}" >> "${STAGING_DIR}/app/app.yaml"
+fi
+
 # Copy app source files (no patching needed — they read from env vars)
 cp "${SRC_DIR}/app/main.py" "${STAGING_DIR}/app/main.py"
 cp "${SRC_DIR}/app/requirements.txt" "${STAGING_DIR}/app/requirements.txt"
@@ -252,7 +247,7 @@ echo "  Staged files ready."
 # -----------------------------------------------
 
 echo ""
-echo "[5/6] Uploading notebooks and running pipeline..."
+echo "[5/7] Uploading notebooks and running pipeline..."
 
 databricks workspace mkdirs "${WORKSPACE_PATH}/pipeline" $PROFILE_FLAG
 
@@ -310,7 +305,7 @@ for nb in 01_ingest_gtfs 02_build_route_segments 03_sync_to_lakebase; do
             "environment_key": "default",
             "spec": { "client": "1" }
         }]
-    }' $PROFILE_FLAG --wait 2>&1)
+    }' $PROFILE_FLAG --wait 2>&1) || true
 
     if echo "$RUN_OUTPUT" | grep -q '"result_state": "SUCCESS"\|SUCCESS'; then
         echo "  ${nb}: SUCCESS"
@@ -325,7 +320,38 @@ done
 # -----------------------------------------------
 
 echo ""
-echo "[6/6] Deploying Databricks App..."
+echo "[6/7] Deploying Databricks App..."
+# Create the app if it doesn't exist
+databricks apps create transit-congestion-map $PROFILE_FLAG 2>/dev/null || true
+databricks apps deploy transit-congestion-map \
+    --source-code-path "${WORKSPACE_PATH}/app" \
+    $PROFILE_FLAG
+
+# -----------------------------------------------
+# 6. Configure app service principal access
+# -----------------------------------------------
+
+echo ""
+echo "[7/7] Configuring app service principal access to Lakebase..."
+source "${SCRIPT_DIR}/setup_lakebase.sh" --configure-app-access transit-congestion-map
+
+# Redeploy app to pick up the native password and reset connections
+echo "  Redeploying app with updated credentials..."
+
+# Re-patch app.yaml with native password if it was just generated
+if [ -n "${LAKEBASE_NATIVE_PASSWORD:-}" ]; then
+    # Ensure the env var is in the staged app.yaml
+    if ! grep -q "LAKEBASE_NATIVE_PASSWORD" "${STAGING_DIR}/app/app.yaml" 2>/dev/null; then
+        echo "  - name: LAKEBASE_NATIVE_PASSWORD" >> "${STAGING_DIR}/app/app.yaml"
+        echo "    value: ${LAKEBASE_NATIVE_PASSWORD}" >> "${STAGING_DIR}/app/app.yaml"
+    fi
+    # Re-upload app.yaml
+    databricks workspace import \
+        "${WORKSPACE_PATH}/app/app.yaml" \
+        --file "${STAGING_DIR}/app/app.yaml" \
+        --format AUTO --overwrite $PROFILE_FLAG
+fi
+
 databricks apps deploy transit-congestion-map \
     --source-code-path "${WORKSPACE_PATH}/app" \
     $PROFILE_FLAG
